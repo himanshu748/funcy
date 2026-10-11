@@ -111,6 +111,9 @@ def arggetter(func, _cache={}):
 
     original = getattr(func, '__original__', None) or unwrap(func)
     code = original.__code__
+    # Stop before unwrapping a bound method loses its already supplied receiver.
+    bound = unwrap(func, stop=inspect.ismethod)
+    bound_args = (bound.__self__,) if inspect.ismethod(bound) else ()
 
     # Instrospect pos and kw names
     posnames = code.co_varnames[:code.co_argcount]
@@ -139,6 +142,8 @@ def arggetter(func, _cache={}):
         defaults.update(original.__kwdefaults__)
 
     def get_arg(name, args, kwargs):
+        if bound_args:
+            args = bound_args + args
         if name not in allnames:
             raise TypeError("%s() doesn't have argument named %s" % (func.__name__, name))
 

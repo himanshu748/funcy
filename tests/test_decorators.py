@@ -118,6 +118,72 @@ def test_decorator_with_method_descriptor():
     assert exclaim(str.upper)('hi') == 'HI!'
 
 
+@pytest.mark.parametrize('wrapped', [False, True])
+@pytest.mark.parametrize('wrapped_before_binding', [False, True])
+@pytest.mark.parametrize('class_method', [False, True])
+def test_decorator_access_bound_method_args(wrapped, wrapped_before_binding, class_method):
+    @decorator
+    def inspect_call(call):
+        return call.receiver, call.x, call.rest, call.options
+
+    @decorator
+    def passthrough(call):
+        return call()
+
+    class A(object):
+        def method(receiver, x=10, *rest, **options):
+            return x
+
+        if wrapped_before_binding:
+            method = passthrough(method)
+        if class_method:
+            method = classmethod(method)
+
+    instance = A()
+    receiver = A if class_method else instance
+    method = instance.method
+    if wrapped:
+        method = passthrough(method)
+
+    inspected = inspect_call(method)
+    assert inspected(3, 4, extra=5) == (receiver, 3, (4,), {'extra': 5})
+    assert inspected(x=3) == (receiver, 3, (), {})
+    assert inspected() == (receiver, 10, (), {})
+
+
+def test_decorator_access_variadic_bound_method():
+    @decorator
+    def inspect_call(call):
+        return call.args
+
+    class A(object):
+        def method(*args):
+            return args
+
+    instance = A()
+    assert inspect_call(instance.method)(1, 2) == (instance, 1, 2)
+
+
+@pytest.mark.parametrize('bound_first', [False, True])
+def test_decorator_bound_method_argument_cache(bound_first):
+    @decorator
+    def inspect_call(call):
+        return call.self, call.x
+
+    class A(object):
+        def method(self, x):
+            return x
+
+    first, second = A(), A()
+    calls = [(inspect_call(A.method), (first, 1)),
+             (inspect_call(first.method), (1,))]
+    if bound_first:
+        calls.reverse()
+    for method, args in calls:
+        assert method(*args) == (first, 1)
+    assert inspect_call(second.method)(2) == (second, 2)
+
+
 def test_chain_arg_access():
     @decorator
     def decor(call):
